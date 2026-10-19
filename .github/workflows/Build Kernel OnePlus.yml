@@ -699,6 +699,8 @@ jobs:
           echo "GIT_HASH=$GIT_HASH"
           # 供下载管理器 APK 时按提交精确匹配
           echo "KSU_COMMIT_FULL=$(git rev-parse HEAD)" >> $GITHUB_ENV
+          # 文件名里带上内核提交，避免 KSUVER（只跟 main 分支提交数走）掩盖真实版本
+          echo "KSU_SHORT_HASH=$(git rev-parse --short=8 HEAD)" >> $GITHUB_ENV
 
           # 组装版本号
           if [[ -n "$MANUAL_HASH" ]]; then
@@ -1576,7 +1578,7 @@ jobs:
       - name: Upload AnyKernel3
         uses: actions/upload-artifact@v7
         with:
-          name: AnyKernel3_SukiSUUltra_${{ env.KSUVER }}_${{ steps.extract_info.outputs.value }}(${{ env.CKERNEL_VERSION }})${{ steps.suffix.outputs.value }}
+          name: AnyKernel3_SukiSUUltra_${{ env.KSUVER }}_${{ env.KSU_SHORT_HASH }}_${{ steps.extract_info.outputs.value }}(${{ env.CKERNEL_VERSION }})${{ steps.suffix.outputs.value }}
           path: ./AnyKernel3/*
 
       - name: Extract and Process ZRAM Module
