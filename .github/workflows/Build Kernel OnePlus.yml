@@ -816,6 +816,13 @@ jobs:
             echo "正在打susfs补丁"
             patch -p1 < 50_add_susfs_in_gki-${{ env.KANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
             echo "susfs_patch完成"
+            # 5.15.167 兼容：上游补丁按 5.15.211 写，task_mmu.c 的 include hunk 会因上下文
+            # 含 <trace/hooks/mm.h> 而被丢弃；宏调用却打进去了 → 隐式声明编译错误。
+            # 这里检测到缺失就手动补插 include，让 hunk 失效不影响编译。
+            if grep -q "SUSFS_IS_INODE" fs/proc/task_mmu.c && ! grep -q "susfs_def.h" fs/proc/task_mmu.c; then
+              sed -i 's@^#include <linux/pkeys.h>@#include <linux/pkeys.h>\n#if defined(CONFIG_KSU_SUSFS_SUS_KSTAT) || defined(CONFIG_KSU_SUSFS_SUS_MAP) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)\n#include <linux/susfs_def.h>\n#endif@' fs/proc/task_mmu.c
+              echo "✅ 已为 task_mmu.c 补插 susfs_def.h include（5.15.211 上下文 hunk 未命中）"
+            fi
           fi
           source $REJ_CHECKER
           check_rejects .
