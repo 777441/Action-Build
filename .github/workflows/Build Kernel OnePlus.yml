@@ -677,8 +677,14 @@ jobs:
 
           # 如果指定了手动 hash，就切换到该提交
           if [[ -n "$MANUAL_HASH" ]]; then
-            git fetch origin "$KSU_BUILTIN_BRANCH" --depth=50
-            git checkout "$MANUAL_HASH"
+            # setup.sh 是完整克隆，直接 checkout 即可；失败再加深/解除浅克隆重试
+            if ! git checkout "$MANUAL_HASH" 2>/dev/null; then
+              git fetch origin "$KSU_BUILTIN_BRANCH" --depth=2000 || true
+              if ! git checkout "$MANUAL_HASH" 2>/dev/null; then
+                git fetch origin --unshallow 2>/dev/null || true
+                git checkout "$MANUAL_HASH"
+              fi
+            fi
             SHORT_HASH=${MANUAL_HASH:0:8}
           fi
 
@@ -745,7 +751,10 @@ jobs:
           cd kernel_workspace
           if [ "${{ github.event.inputs.SUSFS_META }}" != "-1" ]; then
             SUSFS_META="${{ github.event.inputs.SUSFS_META }}"
-            git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ env.KANDROID_VERSION }}-${{ env.KERNEL_VERSION }}${{ github.event.inputs.SUSFS_DEV == 'true' && '-dev' || '' }}
+            SUSFS_BRANCH="gki-${{ env.KANDROID_VERSION }}-${{ env.KERNEL_VERSION }}${{ github.event.inputs.SUSFS_DEV == 'true' && '-dev' || '' }}"
+            # 优先 GitHub 镜像（gitlab.com 对 Actions 共享 IP 限流），镜像不可用时回退官方源
+            git clone https://github.com/777441/susfs4ksu-mirror.git -b "$SUSFS_BRANCH" susfs4ksu \
+              || { rm -rf susfs4ksu; git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH" susfs4ksu; }
             cd susfs4ksu
             if [ -n "$SUSFS_META" ]; then
               if [[ "$SUSFS_META" =~ ^[0-9]+$ ]]; then
