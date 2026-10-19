@@ -697,6 +697,8 @@ jobs:
 
           GIT_HASH=$(git rev-parse --short HEAD)
           echo "GIT_HASH=$GIT_HASH"
+          # 供下载管理器 APK 时按提交精确匹配
+          echo "KSU_COMMIT_FULL=$(git rev-parse HEAD)" >> $GITHUB_ENV
 
           # 组装版本号
           if [[ -n "$MANUAL_HASH" ]]; then
@@ -1521,13 +1523,25 @@ jobs:
         run: |
           MANAGER_ARTIFACT=Manager
 
-          echo "Using branch: $KSU_MANAGER_BRANCH"
+          echo "内核提交: ${KSU_COMMIT_FULL:-未知}"
           echo "Downloading artifact: $MANAGER_ARTIFACT"
 
-          run_id=$(gh api "repos/SukiSU-Ultra/SukiSU-Ultra/actions/workflows/build-manager.yml/runs?branch=$KSU_MANAGER_BRANCH&status=success&event=push&per_page=1" --jq '.workflow_runs[0].id' || echo "")
+          run_id=""
+          # 优先取与内核提交完全一致的管理器构建，避免"老内核 + 新管理器"版本错配
+          if [[ -n "${KSU_COMMIT_FULL:-}" ]]; then
+            run_id=$(gh api "repos/SukiSU-Ultra/SukiSU-Ultra/actions/workflows/build-manager.yml/runs?head_sha=${KSU_COMMIT_FULL}&status=success&per_page=1" --jq '.workflow_runs[0].id' 2>/dev/null || echo "")
+            if [[ -n "$run_id" ]]; then
+              echo "✅ 命中与内核提交 ${KSU_COMMIT_FULL:0:8} 对应的管理器构建 (run $run_id)"
+            fi
+          fi
 
           if [[ -z "$run_id" ]]; then
-            echo "No successful workflow run found on branch $KSU_MANAGER_BRANCH. Skipping download."
+            echo "::warning title=Manager Version Mismatch::该内核提交没有对应的管理器构建，回退到 $KSU_MANAGER_BRANCH 分支最新构建，管理器与内核版本可能不一致"
+            run_id=$(gh api "repos/SukiSU-Ultra/SukiSU-Ultra/actions/workflows/build-manager.yml/runs?branch=$KSU_MANAGER_BRANCH&status=success&event=push&per_page=1" --jq '.workflow_runs[0].id' || echo "")
+          fi
+
+          if [[ -z "$run_id" ]]; then
+            echo "No successful workflow run found. Skipping download."
             exit 0
           fi
           artifact_url=$(gh api "repos/SukiSU-Ultra/SukiSU-Ultra/actions/runs/$run_id/artifacts" | jq -r ".artifacts[] | select(.name == \"$MANAGER_ARTIFACT\") | .archive_download_url" | head -n1)
