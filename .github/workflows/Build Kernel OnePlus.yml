@@ -737,11 +737,13 @@ jobs:
           fi
 
           # 上游 kernel/sulog/event.c 的 USER_ARG_NULL 宏展开成指针，
-          # 而 ksu_sulog_capture() 第三参数按值接收 struct user_arg_ptr，
-          # 未启用 SUSFS 时会直接编译失败（SUSFS 补丁会顺带覆盖这段，所以只有关 SUSFS 才暴露）
-          if grep -q '#define USER_ARG_NULL user_arg_null_ptr()' kernel/sulog/event.c 2>/dev/null; then
+          # 而 ksu_sulog_capture() 第三参数按值接收 struct user_arg_ptr。
+          # 只有【未启用 SUSFS】时才会暴露这个类型错误：
+          # 开启 SUSFS 时 10_enable_susfs_for_ksu.patch 会改动 sulog/event.c（含函数签名），
+          # 若提前改宏会导致补丁 hunk 失配，反而变成"指针传给指针参数"的反向错误。
+          if [ "${{ github.event.inputs.SUSFS_META }}" = "-1" ] && grep -q '#define USER_ARG_NULL user_arg_null_ptr()' kernel/sulog/event.c 2>/dev/null; then
             sed -i 's|#define USER_ARG_NULL user_arg_null_ptr()|#define USER_ARG_NULL (*user_arg_null_ptr())|' kernel/sulog/event.c
-            echo "✅ 已修复 sulog/event.c 的 USER_ARG_NULL 宏"
+            echo "✅ 已修复 sulog/event.c 的 USER_ARG_NULL 宏（无 SUSFS 模式）"
           fi
 
           KSU_VERSION=$(expr $(git rev-list --count "$KSU_MANAGER_BRANCH" 2>/dev/null || echo 13000) + 37185)
